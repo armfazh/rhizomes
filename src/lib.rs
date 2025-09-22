@@ -33,6 +33,8 @@ pub mod idpf;
 mod ntt;
 mod polynomial;
 mod prng;
+#[cfg(feature = "rhizomes")]
+mod rhizomes;
 pub mod topology;
 pub mod vdaf;
 #[cfg(all(feature = "crypto-dependencies", feature = "experimental"))]

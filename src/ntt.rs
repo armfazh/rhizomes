@@ -87,6 +87,67 @@ pub fn ntt<F: NttFriendlyFieldElement>(
     Ok(())
 }
 
+/// Same as [ntt] but evaluates the input polynomial at two roots of unity.
+///
+/// Given the coefficients 'inp' of a polynomial P and 'N=size', returns
+///   P(w*R^0), P(w*R^1), P(w*R^2), ... , P(w*R^(N-1))
+/// where
+///   R is an N-th root of unity, and
+///   w is a 2N-th root of unity, i.e., R = w^2.
+///
+/// Note that setting w=1 is the same as calling the [ntt] function.
+#[cfg(feature = "rhizomes")]
+#[allow(clippy::many_single_char_names)]
+pub fn ntt_star<F: NttFriendlyFieldElement>(
+    outp: &mut [F],
+    inp: &[F],
+    size: usize,
+) -> Result<(), NttError> {
+    let d = usize::try_from(log2(size as u128)).map_err(|_| NttError::SizeTooLarge)?;
+
+    if size > outp.len() {
+        return Err(NttError::OutputTooSmall);
+    }
+
+    if size > 1 << MAX_ROOTS {
+        return Err(NttError::SizeTooLarge);
+    }
+
+    if size != 1 << d {
+        return Err(NttError::SizeInvalid);
+    }
+
+    if d > 0 {
+        for (i, outp_val) in outp[..size].iter_mut().enumerate() {
+            let j = bitrev(d, i);
+            *outp_val = if j < inp.len() { inp[j] } else { F::zero() };
+        }
+    } else {
+        outp[0] = inp[0];
+    }
+
+    let mut w;
+    for l in 1..d + 1 {
+        w = F::root(l + 1).unwrap(); // (*) Uses the 2N-th root of unity instead of one.
+        let r = F::root(l).unwrap();
+        let y = 1 << (l - 1);
+        let chunk = (size / y) >> 1;
+
+        for i in 0..y {
+            for j in 0..chunk {
+                let x = (j << l) + i;
+                let u = outp[x];
+                let v = w * outp[x + y];
+                outp[x] = u + v;
+                outp[x + y] = u - v;
+            }
+            w *= r;
+        }
+    }
+
+    Ok(())
+}
+
 /// Sets `outp` to the inverse of the DFT of `inp`.
 #[cfg(any(test, all(feature = "crypto-dependencies", feature = "experimental")))]
 pub(crate) fn ntt_inv<F: NttFriendlyFieldElement>(

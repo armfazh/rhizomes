@@ -240,7 +240,14 @@ fn prio3(c: &mut Criterion) {
     group.finish();
 
     let mut group = c.benchmark_group("prio3sumvec_shard");
-    for (input_length, chunk_length) in [(10, 3), (100, 10), (1_000, 31)] {
+    for (input_length, chunk_length) in [
+        (10, 3),
+        (100, 10),
+        (1_000, 31),
+        (10_000, 100),
+        (100_000, 316),
+        (1_000_000, 1_000),
+    ] {
         group.bench_with_input(
             BenchmarkId::new("serial", input_length),
             &(input_length, chunk_length),
@@ -281,7 +288,14 @@ fn prio3(c: &mut Criterion) {
     group.finish();
 
     let mut group = c.benchmark_group("prio3sumvec_prepare_init");
-    for (input_length, chunk_length) in [(10, 3), (100, 10), (1_000, 31)] {
+    for (input_length, chunk_length) in [
+        (10, 3),
+        (100, 10),
+        (1_000, 31),
+        (10_000, 100),
+        (100_000, 316),
+        (1_000_000, 1_000),
+    ] {
         group.bench_with_input(
             BenchmarkId::new("serial", input_length),
             &(input_length, chunk_length),
@@ -355,6 +369,7 @@ fn prio3(c: &mut Criterion) {
         (1_000, 31),
         (10_000, 100),
         (100_000, 316),
+        (1_000_000, 1_000),
     ] {
         if input_length >= 100_000 {
             group.measurement_time(Duration::from_secs(15));
@@ -409,6 +424,7 @@ fn prio3(c: &mut Criterion) {
         (1_000, 31),
         (10_000, 100),
         (100_000, 316),
+        (1_000_000, 1_000),
     ] {
         if input_length >= 100_000 {
             group.measurement_time(Duration::from_secs(15));
@@ -484,7 +500,14 @@ fn prio3(c: &mut Criterion) {
     group.finish();
 
     let mut group = c.benchmark_group("prio3multihotcountvec_shard");
-    for (input_length, chunk_length) in [(10, 3), (100, 10), (1_000, 31)] {
+    for (input_length, chunk_length) in [
+        (10, 3),
+        (100, 10),
+        (1_000, 31),
+        (10_000, 100),
+        (100_000, 316),
+        (1_000_000, 1_000),
+    ] {
         group.bench_with_input(
             BenchmarkId::new("serial", input_length),
             &(input_length, chunk_length),
@@ -529,7 +552,14 @@ fn prio3(c: &mut Criterion) {
     group.finish();
 
     let mut group = c.benchmark_group("prio3multihotcountvec_prepare_init");
-    for (input_length, chunk_length) in [(10, 3), (100, 10), (1_000, 31)] {
+    for (input_length, chunk_length) in [
+        (10, 3),
+        (100, 10),
+        (1_000, 31),
+        (10_000, 100),
+        (100_000, 316),
+        (1_000_000, 1_000),
+    ] {
         group.bench_with_input(
             BenchmarkId::new("serial", input_length),
             &(input_length, chunk_length),

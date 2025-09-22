@@ -72,6 +72,57 @@ impl<F: NttFriendlyFieldElement> Mul<F> {
         ntt_inv_finish(outp, n, self.n_inv);
         Ok(())
     }
+
+    /// Multiplies input polynomials directly in the Lagrange basis.
+    ///
+    /// Extends the basis of input polynomials, multiplies them using
+    /// point-wise multiplication, and the result is also in the Lagrange basis.
+    ///
+    /// Compared to [call_poly_ntt], this function saves one N-sized NTT.
+    #[cfg(feature = "rhizomes")]
+    fn call_poly_direct_lagrange(&self, outp: &mut [F], inp: &[Vec<F>]) -> Result<(), FlpError> {
+        use crate::ntt::ntt_star;
+        let n = self.n;
+        let m = n >> 1;
+        assert_eq!(n, outp.len());
+        assert_eq!(m, inp[0].len());
+        assert_eq!(m, inp[1].len());
+
+        let tmp = &mut vec![F::zero(); m];
+        let (p_values, q_values) = outp[..n].split_at_mut(m);
+
+        // Extend dimension of p and q using the rhizome technique.
+        ntt(tmp, &inp[0], m)?;
+        tmp[1..].reverse();
+        ntt_star(p_values, tmp, m)?;
+
+        ntt(tmp, &inp[1], m)?;
+        tmp[1..].reverse();
+        ntt_star(q_values, tmp, m)?;
+
+        // Performs (p/N)*(q/N) as p*q*1/(N^2).
+        let m_inv = self.n_inv + self.n_inv;
+        let m_inv_sqr = m_inv * m_inv;
+        p_values
+            .iter_mut()
+            .zip(q_values)
+            .for_each(|(p, q)| *p *= *q * m_inv_sqr);
+
+        // Store the previous values at the odd positions.
+        for i in (0..m).rev() {
+            outp[2 * i + 1] = outp[i];
+        }
+
+        // Performs p*q from inputs storing products at the even positions.
+        outp.iter_mut()
+            .step_by(2)
+            .zip(inp[0].iter().zip(inp[1].iter()))
+            .for_each(|(pq, (p, q))| {
+                *pq = *p * *q;
+            });
+
+        Ok(())
+    }
 }
 
 impl<F: NttFriendlyFieldElement> Gadget<F> for Mul<F> {
@@ -82,10 +133,15 @@ impl<F: NttFriendlyFieldElement> Gadget<F> for Mul<F> {
 
     fn call_poly(&mut self, outp: &mut [F], inp: &[Vec<F>]) -> Result<(), FlpError> {
         gadget_call_poly_check(self, outp, inp)?;
+        #[cfg(not(feature = "rhizomes"))]
         if inp[0].len() >= NTT_THRESHOLD {
             self.call_poly_ntt(outp, inp)
         } else {
             self.call_poly_direct(outp, inp)
+        }
+        #[cfg(feature = "rhizomes")]
+        {
+            self.call_poly_direct_lagrange(outp, inp)
         }
     }
 
@@ -118,6 +174,9 @@ pub struct PolyEval<F: NttFriendlyFieldElement> {
     n_inv: F,
     /// The number of times this gadget will be called.
     num_calls: usize,
+    #[cfg(feature = "rhizomes")]
+    /// poly in the Lagrange basis.
+    poly_values: Vec<F>,
 }
 
 impl<F: NttFriendlyFieldElement> PolyEval<F> {
@@ -126,11 +185,22 @@ impl<F: NttFriendlyFieldElement> PolyEval<F> {
     pub fn new(poly: Vec<F>, num_calls: usize) -> Self {
         let n = gadget_poly_ntt_mem_len(poly_deg(&poly), num_calls);
         let n_inv = F::from(F::Integer::try_from(n).unwrap()).inv();
+        #[cfg(feature = "rhizomes")]
+        let poly_values = {
+            // Converts poly from Monomial basis to Lagrange basis, so API does not change.
+            let l = poly.len();
+            let k = l.next_power_of_two();
+            let mut poly_values = vec![F::zero(); k];
+            ntt(&mut poly_values, &poly, k).unwrap();
+            poly_values
+        };
         Self {
             poly,
             n,
             n_inv,
             num_calls,
+            #[cfg(feature = "rhizomes")]
+            poly_values,
         }
     }
 }
@@ -181,12 +251,42 @@ impl<F: NttFriendlyFieldElement> PolyEval<F> {
         }
         Ok(())
     }
+
+    /// Polynomial composition P(I(x)) in Lagrange basis.
+    ///
+    /// Given polynomials P (self.poly_values) and I (input), returns P*I, where * is polynomial composition.
+    #[cfg(feature = "rhizomes")]
+    fn call_poly_direct_lagrange(&self, outp: &mut [F], inp: &[Vec<F>]) -> Result<(), FlpError> {
+        use crate::rhizomes::{inv_pow2, nth_root_powers, poly_multieval_rhizomes_batched};
+        // Recover the input polynomial in monomial basis.
+        let n = self.n;
+        let l = inp[0].len();
+        let coeffs = &mut vec![F::zero(); l];
+        ntt(coeffs, &inp[0], l)?;
+        ntt_inv_finish(coeffs, l, inv_pow2(l));
+        // Evaluates the input polynomial to get n evaluations.
+        ntt(&mut outp[..n], coeffs, n)?;
+
+        // Performs polynomial composition P(I) by evaluating all values of input.
+        let roots = nth_root_powers(self.poly_values.len());
+        poly_multieval_rhizomes_batched(&mut outp[..n], &self.poly_values, &roots);
+        Ok(())
+    }
 }
 
 impl<F: NttFriendlyFieldElement> Gadget<F> for PolyEval<F> {
     fn call(&mut self, inp: &[F]) -> Result<F, FlpError> {
         gadget_call_check(self, inp.len())?;
-        Ok(poly_eval(&self.poly, inp[0]))
+        #[cfg(not(feature = "rhizomes"))]
+        {
+            Ok(poly_eval(&self.poly, inp[0]))
+        }
+        #[cfg(feature = "rhizomes")]
+        {
+            use crate::rhizomes::{nth_root_powers, poly_eval_rhizomes};
+            let roots = nth_root_powers(self.poly_values.len());
+            Ok(poly_eval_rhizomes(&self.poly_values, &roots, &inp[0]))
+        }
     }
 
     fn call_poly(&mut self, outp: &mut [F], inp: &[Vec<F>]) -> Result<(), FlpError> {
@@ -196,10 +296,15 @@ impl<F: NttFriendlyFieldElement> Gadget<F> for PolyEval<F> {
             *item = F::zero();
         }
 
+        #[cfg(not(feature = "rhizomes"))]
         if inp[0].len() >= NTT_THRESHOLD {
             self.call_poly_ntt(outp, inp)
         } else {
             self.call_poly_direct(outp, inp)
+        }
+        #[cfg(feature = "rhizomes")]
+        {
+            self.call_poly_direct_lagrange(outp, inp)
         }
     }
 
@@ -564,17 +669,41 @@ mod tests {
             for j in 0..wire_poly_len {
                 wire_polys[i][j] = prng.get();
             }
-            inp[i] = poly_eval(&wire_polys[i], r);
+            #[cfg(not(feature = "rhizomes"))]
+            {
+                inp[i] = poly_eval(&wire_polys[i], r);
+            }
+            #[cfg(feature = "rhizomes")]
+            {
+                // Assumes each polynomial at wire_polys[i] is in Lagrange basis.
+                use crate::rhizomes::{nth_root_powers, poly_eval_rhizomes};
+                let roots = nth_root_powers(wire_poly_len);
+                inp[i] = poly_eval_rhizomes(&wire_polys[i], &roots, &r);
+            }
         }
 
         g.call_poly(&mut gadget_poly, &wire_polys).unwrap();
+        #[cfg(not(feature = "rhizomes"))]
         let got = poly_eval(&gadget_poly, r);
+        #[cfg(feature = "rhizomes")]
+        let got = {
+            use crate::rhizomes::{nth_root_powers, poly_eval_rhizomes};
+            let roots = nth_root_powers(gadget_poly.len());
+            poly_eval_rhizomes(&gadget_poly, &roots, &r)
+        };
         let want = g.call(&inp).unwrap();
         assert_eq!(got, want);
 
         // Repeat the call to make sure that the gadget's memory is reset properly between calls.
         g.call_poly(&mut gadget_poly, &wire_polys).unwrap();
+        #[cfg(not(feature = "rhizomes"))]
         let got = poly_eval(&gadget_poly, r);
+        #[cfg(feature = "rhizomes")]
+        let got = {
+            use crate::rhizomes::{nth_root_powers, poly_eval_rhizomes};
+            let roots = nth_root_powers(gadget_poly.len());
+            poly_eval_rhizomes(&gadget_poly, &roots, &r)
+        };
         assert_eq!(got, want);
     }
 }
