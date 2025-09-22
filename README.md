@@ -1,3 +1,32 @@
+# Rhizomes and the Roots of Efficiency — Improving Prio
+
+This project is a fork of [divviup/libprio-rs](https://github.com/divviup/libprio-rs), a rust implementation of Prio.
+
+**Improvements**
+
+- Speeds up Polynomial Evaluation in the Lagrange basis.
+- Polynomials Basis Extension in the Lagrange basis.
+- Use of the Pólya polynomial basis.
+- Reduces the number of NTTs.
+
+## Benchmarks
+
+Invoke make for benchmarking the code:
+
+```sh
+make bench
+```
+
+Optionally, generate a graph to compare timings.
+
+```sh
+make graph
+```
+
+![graph comparison](comparison.png)
+
+---
+
 # libprio-rs
 [![Latest Version]][crates.io] [![Docs badge]][docs.rs]
 
