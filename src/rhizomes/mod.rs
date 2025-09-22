@@ -10,6 +10,7 @@
 use crate::{
     field::{FieldElement, NttFriendlyFieldElement},
     fp::log2,
+    ntt::{ntt, ntt_inv_finish, ntt_star},
 };
 
 /// Returns the element `1/(2^n)` on `F`.
@@ -25,11 +26,67 @@ fn half_power<F: FieldElement>(n: usize) -> F {
 
 /// Returns the element `1/n` on `F`, where `n` must be a power of two.
 #[inline]
-fn inv_pow2<F: FieldElement>(n: usize) -> F {
+pub(crate) fn inv_pow2<F: FieldElement>(n: usize) -> F {
     let log2_n = usize::try_from(log2(n as u128)).unwrap();
     assert_eq!(n, 1 << log2_n);
 
     half_power(log2_n)
+}
+
+fn term_w<F: FieldElement>(m: usize, i: usize, roots: &[F]) -> F {
+    let mut w = F::one();
+    for j in 0..=m {
+        if i != j {
+            w *= roots[i] - roots[j];
+        }
+    }
+    w.inv()
+}
+
+/// Extends dimension by one, keeping the degree of polynomial unchanged.
+pub fn extend_dimension_one<F: FieldElement>(values: &[F], roots: &[F]) -> F {
+    let k = values.len();
+    let n = roots.len();
+    assert!(k < n);
+    let mut y = F::zero();
+    if k == n - 1 {
+        // Special case.
+        for (yi, roots_j) in values.iter().zip(roots.iter().cycle().skip(1 + (n >> 1))) {
+            y += *yi * *roots_j;
+        }
+    } else if k < n {
+        // General case.
+        for (i, yi) in values.iter().enumerate() {
+            y += *yi * term_w(k, i, roots);
+        }
+        y *= -term_w(k, k, roots).inv();
+    }
+    y
+}
+
+/// Given (a0, ..., aN, b0, ..., bN) permutes the input in place as (a0,b0, ..., aN,bN).
+/// https://rosettacode.org/wiki/Perfect_shuffle
+fn perfect_shuffle<T>(input: &mut [T]) {
+    let n = input.len();
+    if n >= 4 {
+        let (a, b) = input.split_at_mut(n >> 1);
+        let (_, a1) = a.split_at_mut(n >> 2);
+        let (b0, _) = b.split_at_mut(n >> 2);
+        a1.swap_with_slice(b0);
+        perfect_shuffle(a);
+        perfect_shuffle(b);
+    }
+}
+
+/// Extends dimension by double, keeping the degree of polynomial unchanged.
+pub fn extend_dimension_double<F: NttFriendlyFieldElement>(values: &mut [F], n: usize) {
+    assert!(2 * n <= values.len());
+    let n_inv = inv_pow2(n);
+    let mut tmp = vec![F::zero(); n];
+    ntt(&mut tmp, &values[..n], n).unwrap();
+    ntt_inv_finish(&mut tmp, n, n_inv);
+    ntt_star(&mut values[n..2 * n], &tmp, n).unwrap();
+    perfect_shuffle(&mut values[..2 * n]);
 }
 
 /// Evaluates a polynomial given in the Lagrange basis.
@@ -89,6 +146,44 @@ pub fn poly_eval_rhizomes_batched<F: FieldElement>(
     }
 
     u
+}
+
+/// Evaluates a polynomial given in the Lagrange basis at multiple values.
+///
+/// This is an implementation of Algorithm 6 with multiple evaluation points.
+pub fn poly_multieval_rhizomes_batched<F: NttFriendlyFieldElement>(
+    output_x: &mut [F],
+    poly: &[F],
+    roots: &[F],
+) {
+    let n = poly.len();
+    let z = poly[..n]
+        .iter()
+        .zip(&roots[..n])
+        .map(|(yi, wn_i)| *yi * *wn_i)
+        .collect::<Vec<_>>();
+    let num_roots_inv = -inv_pow2::<F>(roots.len());
+
+    for x_j in output_x.iter_mut() {
+        let mut l = F::one();
+        let mut u = poly[0];
+        let mut d = roots[0] - *x_j;
+        for (zi, wn_i) in z[1..n].iter().zip(&roots[1..n]) {
+            l *= d;
+            d = *wn_i - *x_j;
+            u = u * d + l * *zi;
+        }
+
+        for wn_i in &roots[n..] {
+            u *= *wn_i - *x_j;
+        }
+
+        if roots.len() > 1 {
+            u *= num_roots_inv;
+        }
+
+        *x_j = u
+    }
 }
 
 /// Generates the powers of the primitive n-th root of unity.

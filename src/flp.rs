@@ -295,6 +295,7 @@ pub trait Flp: Sized + Eq + Clone + Debug {
             // Interpolate the wire polynomials `f[0], ..., f[g_arity-1]` from the input wires of each
             // evaluation of the gadget.
             let m = wire_poly_len(gadget.calls());
+            #[cfg(not(feature = "rhizomes"))]
             let m_inv = Self::Field::from(
                 <Self::Field as FieldElementWithInteger>::Integer::try_from(m).unwrap(),
             )
@@ -305,8 +306,15 @@ pub trait Flp: Sized + Eq + Clone + Debug {
                 .zip(gadget.f_vals[..gadget.arity()].iter())
                 .zip(proof[proof_len..proof_len + gadget.arity()].iter_mut())
             {
-                ntt(coefficients, values, m)?;
-                ntt_inv_finish(coefficients, m, m_inv);
+                #[cfg(not(feature = "rhizomes"))]
+                {
+                    ntt(coefficients, values, m)?;
+                    ntt_inv_finish(coefficients, m, m_inv);
+                }
+                #[cfg(feature = "rhizomes")]
+                // Returns the polynomial in the Lagrange basis (i.e., the values) directly.
+                // This avoids inverse NTT for recovering the coefficients.
+                coefficients[..values.len()].copy_from_slice(values);
 
                 // The first point on each wire polynomial is a random value chosen by the prover. This
                 // point is stored in the proof so that the verifier can reconstruct the wire
@@ -746,6 +754,7 @@ impl<F: NttFriendlyFieldElement> QueryShimGadget<F> {
         // Evaluate the gadget polynomial at roots of unity.
         let size = p.next_power_of_two();
         let mut p_vals = vec![F::zero(); size];
+        #[cfg(not(feature = "rhizomes"))]
         ntt(&mut p_vals, &proof_data[gadget_arity..], size)?;
 
         // The step is used to compute the element of `p_val` that will be returned by a call to
@@ -753,7 +762,40 @@ impl<F: NttFriendlyFieldElement> QueryShimGadget<F> {
         let step = (1 << (log2(p as u128) - log2(m as u128))) as usize;
 
         // Evaluate the gadget polynomial `p` at query randomness `r`.
+        #[cfg(not(feature = "rhizomes"))]
         let p_at_r = poly_eval(&proof_data[gadget_arity..], r);
+        #[cfg(feature = "rhizomes")]
+        let p_at_r = {
+            use crate::rhizomes::{
+                extend_dimension_double, extend_dimension_one, nth_root_powers, poly_eval_rhizomes,
+            };
+            // The Prover sent the gadget_poly in the Lagrange basis.
+            // However, some missing coordinates must be recovered for polynomial evaluation.
+            let gadget_poly = &proof_data[gadget_arity..];
+            let l = gadget_poly.len();
+            let n = l.next_power_of_two();
+            assert!(l <= n);
+
+            // Extending the dimension (one by one) to the closest power of two.
+            // This keeps the degree of polynomial unchanged.
+            let roots = nth_root_powers(n);
+            p_vals[..l].copy_from_slice(gadget_poly);
+            for k in l..n {
+                p_vals[k] = extend_dimension_one(&p_vals[..k], &roots);
+            }
+
+            // Evaluating the polynomial in the Lagrange basis.
+            let p_at_r = poly_eval_rhizomes(&p_vals[..n], &roots, &r);
+
+            // Calculate all the 'size' evaluations at the roots of unity.
+            let mut k = n;
+            while k < size {
+                extend_dimension_double(&mut p_vals, k);
+                k *= 2;
+            }
+
+            p_at_r
+        };
 
         Ok(Self {
             inner,
@@ -975,6 +1017,10 @@ pub mod test_utils {
                 mutated_proof[i] *= T::Field::from(
                     <T::Field as FieldElementWithInteger>::Integer::try_from(23).unwrap(),
                 );
+                // Ensures one element of the proof was mutated.
+                if mutated_proof[i] == proof[i] {
+                    mutated_proof[i] += T::Field::one();
+                }
                 let verifier = self
                     .flp
                     .query(self.input, &mutated_proof, &query_rand, &joint_rand, 1)

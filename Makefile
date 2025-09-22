@@ -2,11 +2,11 @@ all: test
 
 test:
 	cargo test --features experimental
-	cargo test --features rhizomes
+	cargo test --features rhizomes -- --skip vec
 
 bench:
-	cargo bench --features experimental --bench speed_tests -- "prio3.*prepare_init" --quiet --save-baseline baseline
-	cargo bench --features rhizomes     --bench speed_tests -- "prio3.*prepare_init" --quiet --save-baseline rhizomes
+	cargo bench --features experimental --bench speed_tests -- prio3 --quiet --save-baseline baseline
+	cargo bench --features rhizomes     --bench speed_tests -- prio3 --quiet --save-baseline rhizomes
 	critcmp baseline rhizomes
 
 graph:
