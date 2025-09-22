@@ -1,5 +1,9 @@
 # Rhizomes and the Roots of Efficiency — Improving Prio
 
+This repository contains supplemental material of the article titled
+_"Rhizomes and the Roots of Efficiency—Improving Prio"_
+published at Progress in Cryptology — LATINCRYPT 2025.
+
 This project is a fork of [divviup/libprio-rs](https://github.com/divviup/libprio-rs), a rust implementation of Prio.
 
 **Improvements**
@@ -14,34 +18,35 @@ This project is a fork of [divviup/libprio-rs](https://github.com/divviup/libpri
 
 ## Branches
 
-- main: It follows the main branch of [divviup/libprio-rs](https://github.com/divviup/libprio-rs).
-- baseline: This is libprio-rs version [0.18.1-alpha.2](https://github.com/divviup/libprio-rs/tree/0.18.1-alpha.2) used to make comparisons.
-- rhizomes/verifier: Code changes to improve Prio PrepInit verification only.
+- [main](https://github.com/armfazh/rhizomes/tree/main): It follows the main branch of [divviup/libprio-rs](https://github.com/divviup/libprio-rs).
+- [baseline](https://github.com/armfazh/rhizomes/tree/baseline): This is libprio-rs version [0.18.1-alpha.2](https://github.com/divviup/libprio-rs/tree/0.18.1-alpha.2) used to make comparisons.
+- [rhizomes/verifier](https://github.com/armfazh/rhizomes/tree/rhizomes/verifier): Code changes to improve Prio PrepInit verification only.
 - rhizomes/prover: Code changes to improve Prio prover and verification.
 
-## Benchmarks
+## Speeding up Prio's PrepInit Verifier
+
+Clone and benchmark the code using the following commands:
 
 ```sh
-cargo bench --bench speed_test
+make clone_verifier
+make bench_verifier
+make graph_verifier
 ```
 
-## Citation
+![comparison](comparison_verifier.png)
 
-This code is supplemental material of the article titled
-"Rhizomes and the Roots of Efficiency—Improving Prio"
-published at Proceedings in Cryptology — LATINCRYPT 2025.
+## Citation
 
 DOI: [10.1007/978-3-032-06754-8_16](https://doi.org/10.1007/978-3-032-06754-8_16)
 
 ePrint: [ia.cr/2025/1XXX](https://ia.cr/2025/1xxx)
 
 ```bibtex
-This code is supplemental material of the article titled
 @inproceedings{rhizomes,
   doi = {10.1007/978-3-032-06754-8_16},
   title = {{Rhizomes and the Roots of Efficiency—Improving Prio}},
   author = {Armando {Faz-Hernandez}},
-  booktitle = {{Proceedings in Cryptology — LATINCRYPT 2025}},
+  booktitle = {{Progress in Cryptology — LATINCRYPT 2025}},
   pages = {1-26},
   publisher = {Springer},
   series = {Lecture Notes in Computer Science},
