@@ -16,6 +16,10 @@ This project is a fork of [divviup/libprio-rs](https://github.com/divviup/libpri
 |[Branches](#branches)|[Cite](#citation)|
 |--|--|
 
+**Download the Source Code**
+[verifier.zip](https://github.com/armfazh/rhizomes/archive/refs/heads/rhizomes/verifier.zip) or
+[full.zip](https://github.com/armfazh/rhizomes/archive/refs/heads/rhizomes/full.zip)
+
 ## Branches
 
 - [main](https://github.com/armfazh/rhizomes/tree/main): It follows the main branch of [divviup/libprio-rs](https://github.com/divviup/libprio-rs).
@@ -23,7 +27,7 @@ This project is a fork of [divviup/libprio-rs](https://github.com/divviup/libpri
 - [rhizomes/verifier](https://github.com/armfazh/rhizomes/tree/rhizomes/verifier): Code changes to improve Prio PrepInit verification only.
 - [rhizomes/full](https://github.com/armfazh/rhizomes/tree/rhizomes/full): Code changes to improve Prio both prover and verification.
 
-## Speeding up Prio's PrepInit Verifier
+## Improving Prio: PrepInit Verifier
 
 Clone and benchmark the code using the following commands:
 
@@ -35,7 +39,7 @@ make graph_verifier
 
 ![comparison](comparison_verifier.png)
 
-## Speeding up Prio Prover and Verifier
+## Improving Prio: Both Prover and Verifier
 
 Clone and benchmark the code using the following commands:
 
